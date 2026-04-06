@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Folder Analyzer PRO</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background-animation">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+    
+    <div class="container">
+        <header>
+            <div class="logo">
+                <i class="fa-solid fa-chart-pie"></i>
+                <h1>Folder Analyzer <span>PRO</span></h1>
+            </div>
+            <p>Scan and visualize your local directory disk space accurately.</p>
+        </header>
+
+        <main>
+            <div class="search-box glass-panel">
+                <div class="input-group">
+                    <i class="fa-solid fa-folder-open"></i>
+                    <input type="text" id="pathInput" placeholder="Enter absolute directory path (e.g., C:\Users\YourName\Documents or /Users/Name/Documents)">
+                </div>
+                <button id="analyzeBtn" class="primary-btn">
+                    <span>Analyze</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+
+            <div id="loader" class="loader-container hidden">
+                <div class="spinner"></div>
+                <p>Analyzing directory tree... <span id="loadingPath"></span></p>
+                <p class="loader-subtext">This might take a while for large folders.</p>
+            </div>
+            
+            <div id="errorMsg" class="error-msg hidden glass-panel">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span id="errorText"></span>
+            </div>
+
+            <div id="results" class="results-container hidden">
+                <div class="summary-cards">
+                    <div class="card glass-panel fade-in">
+                        <div class="card-icon"><i class="fa-solid fa-hard-drive"></i></div>
+                        <div class="card-content">
+                            <h3>Total Size</h3>
+                            <h2 id="totalSizeResult">0 B</h2>
+                        </div>
+                    </div>
+                    <div class="card glass-panel fade-in delay-1">
+                        <div class="card-icon"><i class="fa-solid fa-file"></i></div>
+                        <div class="card-content">
+                            <h3>Top Level Items</h3>
+                            <h2 id="totalItemsResult">0</h2>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="chart-section glass-panel fade-in delay-2">
+                        <h3><i class="fa-solid fa-chart-pie"></i> File Types Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="fileTypeChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="table-section glass-panel fade-in delay-3">
+                        <h3><i class="fa-solid fa-folder-tree"></i> Directory Contents Breakdown</h3>
+                        <div class="list-container">
+                            <ul id="childrenList" class="file-list">
+                                <!-- Populated dynamically -->
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="table-section full-width glass-panel fade-in delay-4">
+                        <h3><i class="fa-solid fa-weight-hanging"></i> Top 10 Largest Files (Deep Scan)</h3>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>File Name</th>
+                                        <th>Path</th>
+                                        <th>Size</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="largestFilesBody">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
