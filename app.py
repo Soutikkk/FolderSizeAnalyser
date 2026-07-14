@@ -1,91 +1,216 @@
 import os
-from flask import Flask, render_template, request, jsonify
+from typing import Dict, List, Any
+
+from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
 
-def get_dir_size_and_stats(path):
+MAX_TOP_FILES = 10
+MAX_CACHE_FILES = 100
+
+
+def update_file_stats(
+    file_path: str,
+    file_name: str,
+    file_types: Dict[str, int],
+    largest_files: List[Dict[str, Any]]
+) -> int:
+    """
+    Collect size information for a file.
+    """
+    try:
+        if os.path.islink(file_path) or not os.path.exists(file_path):
+            return 0
+
+        size = os.path.getsize(file_path)
+        extension = os.path.splitext(file_name)[1].lower() or "unknown"
+
+        file_types[extension] = file_types.get(extension, 0) + size
+
+        largest_files.append(
+            {
+                "name": file_name,
+                "path": file_path,
+                "size": size,
+            }
+        )
+
+        return size
+
+    except (PermissionError, OSError):
+        return 0
+
+
+def get_folder_size(
+    folder_path: str,
+    file_types: Dict[str, int],
+    largest_files: List[Dict[str, Any]],
+) -> int:
+    """
+    Recursively calculate folder size.
+    """
+    total_size = 0
+
+    try:
+        for root, _, files in os.walk(folder_path):
+
+            for file in files:
+                file_path = os.path.join(root, file)
+
+                total_size += update_file_stats(
+                    file_path,
+                    file,
+                    file_types,
+                    largest_files,
+                )
+
+                if len(largest_files) > MAX_CACHE_FILES:
+                    largest_files.sort(
+                        key=lambda item: item["size"],
+                        reverse=True,
+                    )
+                    del largest_files[MAX_TOP_FILES:]
+
+    except (PermissionError, OSError):
+        pass
+
+    return total_size
+
+
+def get_directory_statistics(path: str) -> Dict[str, Any]:
+    """
+    Analyze a directory and return its statistics.
+    """
     total_size = 0
     file_types = {}
     largest_files = []
-    children_sizes = []
-    
-    try:
-        # First gather immediate children
-        for item in os.listdir(path):
-            item_path = os.path.join(path, item)
-            size = 0
-            if os.path.exists(item_path):
-                if os.path.isfile(item_path):
-                    try:
-                        size = os.path.getsize(item_path)
-                        ext = os.path.splitext(item)[1].lower() or 'unknown'
-                        file_types[ext] = file_types.get(ext, 0) + size
-                        largest_files.append({"name": item, "path": item_path, "size": size})
-                    except (PermissionError, OSError):
-                        continue
-                elif os.path.isdir(item_path):
-                    dir_size = get_folder_size(item_path, file_types, largest_files)
-                    size = dir_size
-                
-                children_sizes.append({"name": item, "is_dir": os.path.isdir(item_path), "size": size})
-                total_size += size
+    children = []
 
-        # Sort top files
-        largest_files.sort(key=lambda x: x["size"], reverse=True)
-        largest_files = largest_files[:10]
-        
-        # Sort children
-        children_sizes.sort(key=lambda x: x["size"], reverse=True)
+    try:
+        for item in os.listdir(path):
+
+            item_path = os.path.join(path, item)
+
+            if not os.path.exists(item_path):
+                continue
+
+            if os.path.isfile(item_path):
+                size = update_file_stats(
+                    item_path,
+                    item,
+                    file_types,
+                    largest_files,
+                )
+
+            elif os.path.isdir(item_path):
+                size = get_folder_size(
+                    item_path,
+                    file_types,
+                    largest_files,
+                )
+
+            else:
+                size = 0
+
+            children.append(
+                {
+                    "name": item,
+                    "is_dir": os.path.isdir(item_path),
+                    "size": size,
+                }
+            )
+
+            total_size += size
+
+        largest_files.sort(
+            key=lambda item: item["size"],
+            reverse=True,
+        )
+
+        children.sort(
+            key=lambda item: item["size"],
+            reverse=True,
+        )
 
         return {
             "success": True,
             "total_size": total_size,
             "file_types": file_types,
-            "largest_files": largest_files,
-            "children": children_sizes
+            "largest_files": largest_files[:MAX_TOP_FILES],
+            "children": children,
         }
+
     except PermissionError:
-        return {"success": False, "error": f"Permission denied to access {path}. Try running as Administrator or select a different folder."}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {
+            "success": False,
+            "error": (
+                f"Permission denied while accessing '{path}'. "
+                "Run as Administrator or choose another folder."
+            ),
+        }
 
-def get_folder_size(path, file_types, largest_files):
-    total_size = 0
-    try:
-        for root, dirs, files in os.walk(path):
-            for f in files:
-                fp = os.path.join(root, f)
-                try:
-                    if not os.path.islink(fp) and os.path.exists(fp):
-                        size = os.path.getsize(fp)
-                        total_size += size
-                        ext = os.path.splitext(f)[1].lower() or 'unknown'
-                        file_types[ext] = file_types.get(ext, 0) + size
-                        largest_files.append({"name": f, "path": fp, "size": size})
-                        # Keep list small to save memory during walk
-                        if len(largest_files) > 100:
-                            largest_files.sort(key=lambda x: x["size"], reverse=True)
-                            del largest_files[10:]
-                except (PermissionError, OSError):
-                    pass # Skip files we can't access
-    except (PermissionError, OSError):
-        pass # Skip dirs we can't access reading
-    return total_size
+    except Exception as error:
+        return {
+            "success": False,
+            "error": str(error),
+        }
 
-@app.route('/')
-def index():
-    return render_template('index.html')
 
-@app.route('/api/analyze', methods=['POST'])
-def analyze():
-    data = request.json
-    path = data.get('path', '')
-    
-    if not path or not os.path.exists(path):
-         return jsonify({"success": False, "error": "Invalid or non-existent path"})
-    
-    stats = get_dir_size_and_stats(path)
-    return jsonify(stats)
+@app.route("/")
+def home():
+    """
+    Render homepage.
+    """
+    return render_template("index.html")
 
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+
+@app.route("/api/analyze", methods=["POST"])
+def analyze_directory():
+    """
+    Analyze a directory sent from the frontend.
+    """
+    data = request.get_json()
+
+    if not data:
+        return jsonify(
+            {
+                "success": False,
+                "error": "No request data received.",
+            }
+        )
+
+    path = data.get("path", "").strip()
+
+    if not path:
+        return jsonify(
+            {
+                "success": False,
+                "error": "Directory path is required.",
+            }
+        )
+
+    if not os.path.exists(path):
+        return jsonify(
+            {
+                "success": False,
+                "error": "Directory does not exist.",
+            }
+        )
+
+    if not os.path.isdir(path):
+        return jsonify(
+            {
+                "success": False,
+                "error": "Provided path is not a directory.",
+            }
+        )
+
+    return jsonify(get_directory_statistics(path))
+
+
+if __name__ == "__main__":
+    app.run(
+        debug=True,
+        host="127.0.0.1",
+        port=5000,
+    )
